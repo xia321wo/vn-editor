@@ -2,37 +2,186 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>午夜图书馆</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>妈妈今晚的汤</title>
   <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
       font-family: "Microsoft YaHei", sans-serif;
-      max-width: 600px;
-      margin: 50px auto;
-      padding: 20px;
-      line-height: 1.8;
-      background: #0f172a;
+      background: #000;
       color: #e2e8f0;
+      overflow: hidden;              /* 全屏沉浸 */
+      height: 100vh;
     }
-    #story-text { font-size: 20px; min-height: 120px; }
-    button {
-      display: block;
-      margin: 10px 0;
-      padding: 10px 20px;
+
+    /* ===== 全屏场景图（底层） ===== */
+    #scene { position: fixed; inset: 0; z-index: 0; }
+    #bgimg {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+    /* 缓慢缩放（Ken Burns 呼吸感），换图时重新触发 */
+    #bgimg.zoom { animation: kenburns 9s ease-out forwards; }
+    @keyframes kenburns {
+      from { transform: scale(1); }
+      to   { transform: scale(1.08); }
+    }
+
+    /* 惊吓时整个场景震动 */
+    #scene.shake { animation: shake 0.45s; }
+    @keyframes shake {
+      0%, 100% { transform: translate(0, 0); }
+      20% { transform: translate(-8px, 4px); }
+      40% { transform: translate(8px, -4px); }
+      60% { transform: translate(-6px, -3px); }
+      80% { transform: translate(6px, 3px); }
+    }
+
+    /* 闪红层（惊吓时刻） */
+    #flash {
+      position: fixed; inset: 0; z-index: 4;
+      background: #8b0000;
+      opacity: 0;
+      pointer-events: none;          /* 不挡点击 */
+    }
+    #flash.flash { animation: flashanim 0.5s ease-out; }
+    @keyframes flashanim {
+      0% { opacity: 0.45; }
+      100% { opacity: 0; }
+    }
+
+    /* 暗色渐变遮罩 */
+    #overlay {
+      position: fixed; inset: 0; z-index: 1;
+      background: linear-gradient(to bottom,
+        rgba(0,0,0,0.35),
+        rgba(0,0,0,0.72) 70%,
+        rgba(0,0,0,0.9));
+    }
+
+    /* ===== 顶部：标题 + 结局收集 + 控制按钮 ===== */
+    #title {
+      position: fixed; top: 16px; left: 20px; z-index: 3;
+      font-size: 14px;
+      letter-spacing: 2px;
+      color: rgba(226,232,240,0.55);
+    }
+    #ending-count {
+      margin-left: 10px;
+      font-size: 12px;
+      letter-spacing: 0;
+      color: rgba(251,191,36,0.8);
+    }
+    #controls {
+      position: fixed; top: 12px; right: 16px; z-index: 3;
+      display: flex; gap: 8px;
+    }
+    #controls button {
+      width: 36px; height: 36px;
       font-size: 16px;
       cursor: pointer;
-      background: #1e3a5f;
-      color: white;
-      border: none;
-      border-radius: 6px;
+      color: #e2e8f0;
+      background: rgba(15,23,42,0.6);
+      border: 1px solid rgba(226,232,240,0.25);
+      border-radius: 8px;
     }
-    button:hover { background: #2c5282; }
+    #controls button:hover { background: rgba(30,58,95,0.8); }
+
+    /* ===== 底部 UI ===== */
+    #ui {
+      position: fixed; left: 50%; bottom: 24px; z-index: 2;
+      transform: translateX(-50%);
+      width: min(820px, 94vw);
+    }
+
+    #name-label {
+      display: none;
+      background: rgba(15,23,42,0.85);
+      border: 1px solid rgba(226,232,240,0.2);
+      border-radius: 8px 8px 0 0;
+      padding: 6px 18px;
+      margin-left: 12px;
+      font-size: 15px;
+      font-weight: bold;
+      color: #fbbf24;
+    }
+
+    #dialogue {
+      position: relative;
+      background: rgba(10,14,22,0.78);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(226,232,240,0.12);
+      border-radius: 12px;
+      padding: 22px 28px;
+      min-height: 150px;
+      cursor: pointer;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    #story-text {
+      font-family: "KaiTi", "STKaiti", "SimSun", serif;
+      font-size: 19px;
+      line-height: 1.9;
+      white-space: pre-line;
+    }
+
+    #skip-hint {
+      display: none;
+      position: absolute; right: 18px; bottom: 8px;
+      font-size: 12px;
+      color: rgba(226,232,240,0.4);
+    }
+
+    #choices { margin-top: 14px; text-align: center; }
+    #choices button {
+      display: inline-block;
+      margin: 6px;
+      padding: 10px 24px;
+      font-size: 15px;
+      font-family: inherit;
+      color: #e2e8f0;
+      background: rgba(30,58,95,0.65);
+      border: 1px solid rgba(226,232,240,0.25);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #choices button:hover {
+      background: rgba(44,82,130,0.9);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    #choices button.restart { background: rgba(127,29,29,0.7); }
   </style>
 </head>
 <body>
-  <h1>📖 午夜图书馆</h1>
-  <img id="story-image" alt="场景图片" style="display:none; max-width:100%; border-radius:8px; margin-bottom:16px;">
-  <p id="story-text"></p>
-  <div id="choices"></div>
+  <!-- 底层：全屏场景图 -->
+  <div id="scene"><img id="bgimg" alt=""></div>
+  <!-- 闪红层 -->
+  <div id="flash"></div>
+  <!-- 遮罩层 -->
+  <div id="overlay"></div>
+
+  <!-- 顶部：标题 + 已解锁结局 + 控制按钮 -->
+  <div id="title">🍲 妈妈今晚的汤<span id="ending-count"></span></div>
+  <div id="controls">
+    <button id="mute-btn" title="声音开关">🔊</button>
+    <button id="fs-btn" title="全屏">⛶</button>
+  </div>
+
+  <!-- 底部 UI -->
+  <div id="ui">
+    <div id="name-label"></div>
+    <div id="dialogue">
+      <p id="story-text"></p>
+      <span id="skip-hint">点击跳过 ▸</span>
+    </div>
+    <div id="choices"></div>
+  </div>
 
   <!-- 故事数据（先加载） -->
   <script src="story.js"></script>
