@@ -4,6 +4,7 @@
 
 // 找到页面上的元素（类似 C 里取变量的地址）
 const textEl = document.getElementById('story-text');
+const imgEl = document.getElementById('story-image');
 const choicesEl = document.getElementById('choices');
 
 // 显示一个节点
@@ -12,6 +13,14 @@ function showNode(nodeName) {
 
   // 1. 显示文字
   textEl.textContent = node.text;
+
+  // 1.5 显示场景图片（节点有 image 字段就显示，没有就隐藏）
+  if (node.image) {
+    imgEl.src = node.image;
+    imgEl.style.display = 'block';
+  } else {
+    imgEl.style.display = 'none';
+  }
 
   // 2. 清空旧的选项按钮（innerHTML = '' 就是把里面的东西清掉）
   choicesEl.innerHTML = '';
