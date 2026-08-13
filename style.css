@@ -1,0 +1,13 @@
+/* 页面整体样式 */
+body {
+  font-family: "Microsoft YaHei", sans-serif;
+  text-align: center;        /* 内容居中 */
+  padding-top: 100px;        /* 顶部留白 */
+}
+
+/* 按钮样式 */
+button {
+  font-size: 20px;
+  padding: 10px 30px;
+  cursor: pointer;           /* 鼠标悬停变手型 */
+}
