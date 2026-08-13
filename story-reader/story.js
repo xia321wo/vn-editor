@@ -22,7 +22,7 @@ const STORY = {
   book: {
     text: "书页上写着你的名字，下面是一行字：「你终于来了。」故事，才刚刚开始……",
     choices: [
-      { text: "继续阅读", next: "continue book" },
+      { text: "继续阅读", next: "continue" },
       { text: "放下书，离开图书馆", next: "run" }
     ]
   },
