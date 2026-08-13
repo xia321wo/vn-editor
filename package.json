@@ -1,0 +1,9 @@
+{
+  "name": "vn-editor",
+  "version": "0.4.0",
+  "private": true,
+  "description": "互动故事阅读器（妈妈今晚的汤）：story-reader 的剧情验证与阅读器逻辑测试",
+  "scripts": {
+    "test": "node story-reader/verify.js"
+  }
+}

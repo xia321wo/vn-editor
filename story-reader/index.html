@@ -21,14 +21,18 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      object-position: center;   /* 默认聚焦画面中心，节点可用 focus 字段覆盖 */
       opacity: 0;
       transition: opacity 0.6s ease;
     }
-    /* 缓慢缩放（Ken Burns 呼吸感），换图时重新触发 */
-    #bgimg.zoom { animation: kenburns 9s ease-out forwards; }
+    /* 缓慢缩放（Ken Burns 呼吸感），换图时重新触发；以聚焦点为轴心，人脸不出画 */
+    #bgimg.zoom {
+      animation: kenburns 10s ease-out forwards;
+      transform-origin: var(--zoom-origin, center);
+    }
     @keyframes kenburns {
       from { transform: scale(1); }
-      to   { transform: scale(1.08); }
+      to   { transform: scale(1.05); }
     }
 
     /* 惊吓时整个场景震动 */
@@ -76,6 +80,32 @@
       letter-spacing: 0;
       color: rgba(251,191,36,0.8);
     }
+    /* 理智条 */
+    #sanity-wrap {
+      position: fixed; top: 42px; left: 20px; z-index: 3;
+      width: 150px;
+    }
+    #sanity-text {
+      display: block;
+      font-size: 12px;
+      color: rgba(226,232,240,0.7);
+      margin-bottom: 4px;
+      letter-spacing: 1px;
+    }
+    #sanity-track {
+      height: 5px;
+      background: rgba(226,232,240,0.15);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    #sanity-bar {
+      height: 100%;
+      width: 100%;
+      background: #f59e0b;
+      border-radius: 3px;
+      transition: width 0.4s ease, background 0.4s ease;
+    }
+    #sanity-bar.low { background: #ef4444; }   /* 低理智：变红 */
     #controls {
       position: fixed; top: 12px; right: 16px; z-index: 3;
       display: flex; gap: 8px;
@@ -168,6 +198,10 @@
 
   <!-- 顶部：标题 + 已解锁结局 + 控制按钮 -->
   <div id="title">🍲 妈妈今晚的汤<span id="ending-count"></span></div>
+  <div id="sanity-wrap">
+    <span id="sanity-text">理智 100</span>
+    <div id="sanity-track"><div id="sanity-bar"></div></div>
+  </div>
   <div id="controls">
     <button id="mute-btn" title="声音开关">🔊</button>
     <button id="fs-btn" title="全屏">⛶</button>

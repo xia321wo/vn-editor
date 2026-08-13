@@ -4,8 +4,16 @@
 // - choices 里的 next 指向下一个节点名（别改）
 // - choices 为空 = 结局
 // - image = 场景图片
+// - focus: "center"/"top"/"bottom"/"left"/"right" = 画面聚焦点（人脸位置，默认 center）
+//   用法：图片里脸偏上就写 focus: "top"，缩放时以脸为轴心，脸不会出画
+// - zoom: false = 该节点不做缓慢缩放（脸部特写场景用）
 // - shake: true = 进入该节点时屏幕震动+闪红（惊吓时刻用）
 // - sfx: "scare"（惊吓音）或 "heartbeat"（心跳声，紧张时刻用）——合成音效，无需素材
+// 选项（choices）里每个选项可加：
+// - sanity: 数字 = 选择后的理智变化（负=下降，正=恢复），如 sanity: -15
+// - need_sanity: 数字 = 理智 ≤ 该值才显示此选项（低理智门控，真结局用），如 need_sanity: 35
+// 理智范围 0-100，开局 100。惊吓节点（shake: true）进入时理智自动 -10。
+// 低理智（≤25）才能看到真结局入口。
 //
 // v2 设定（重要）：
 // - 主角和妈妈相依为命，三年一直一起住
@@ -66,7 +74,7 @@ const STORY = {
     image: "img/bedroom.png",
     choices: [
       { text: "去厨房看看", next: "kitchen" },
-      { text: "从门缝里偷偷看厨房", next: "peek" }
+      { text: "从门缝里偷偷看厨房", next: "peek", sanity: -10 }
     ]
   },
   peek: {
@@ -75,7 +83,7 @@ const STORY = {
     choices: [
       { text: "走进厨房", next: "confront" },
       { text: "退回房间，锁门", next: "hide" },
-      { text: "溜进厨房，拿刀", next: "knife_1" }
+      { text: "溜进厨房，拿刀", next: "knife_1", sanity: -10 }
     ]
   },
   kitchen: {
@@ -83,7 +91,7 @@ const STORY = {
     image: "img/kitchen2.png",
     choices: [
       { text: "「妈，我帮你盛汤。」", next: "kitchen2" },
-      { text: "借口喝水，拉开冰箱", next: "fridge" },
+      { text: "借口喝水，拉开冰箱", next: "fridge", sanity: -15 },
       { text: "退出厨房", next: "bedroom" }
     ]
   },
@@ -94,7 +102,7 @@ const STORY = {
     image: "img/fridge.png",
     choices: [
       { text: "「没、没什么，找水喝。」", next: "kitchen2" },
-      { text: "跑！", next: "escape_door" }
+      { text: "跑！", next: "escape_door", sanity: 5 }
     ]
   },
   kitchen2: {
@@ -102,8 +110,8 @@ const STORY = {
     image: "img/kitchen3.png",
     choices: [
       { text: "喝", next: "drink_end" },
-      { text: "「我妈根本不会做饭！这汤哪来的？」", next: "green_onion" },
-      { text: "打翻汤，跑", next: "escape_door" }
+      { text: "「我妈根本不会做饭！这汤哪来的？」", next: "green_onion", sanity: -15 },
+      { text: "打翻汤，跑", next: "escape_door", sanity: 5 }
     ]
   },
   green_onion: {
@@ -111,24 +119,24 @@ const STORY = {
     image: "img/kitchen4.png",
     choices: [
       { text: "喝", next: "drink_end" },
-      { text: "「你不是我妈妈！」", next: "confront" },
-      { text: "打翻汤，跑", next: "escape_door" }
+      { text: "「你不是我妈妈！」", next: "confront", sanity: -15 },
+      { text: "打翻汤，跑", next: "escape_door", sanity: 5 }
     ]
   },
   confront: {
     text: "你退到墙边，声音在抖：\n\n「我妈不会做饭。她连面条都煮不熟。\n\n你是谁？你为什么长着我妈的脸？\n\n冰箱里那本东西是什么！，厨房安静下来。汤还在咕嘟。\n\n她放下勺子。脸上的笑，没了。她痴痴的望着你",
     image: "img/kitchen5.png",
     choices: [
-      { text: "「你说话啊！你到底是谁！」", next: "truth" },
-      { text: "趁她愣住，冲出门", next: "escape_door" }
+      { text: "「你说话啊！你到底是谁！」", next: "truth", sanity: -15 },
+      { text: "趁她愣住，冲出门", next: "escape_door", sanity: 5 }
     ]
   },
   truth: {
     text: "你发现桌子上正放着你刚刚在冰箱里看到的文件。你没看见有谁把它们放在这，就像凭空变出来的一样。你发现文件上写着：病历、诊断书、病程记录…严重妄想症",
     image: "img/kitchen.png",
     choices: [
-      { text: "你回忆起了什么", next: "escape_door" },
-      { text: "「不对，你不是我妈妈！」", next: "who_is_she" },
+      { text: "你回忆起了什么", next: "escape_door", sanity: 5 },
+      { text: "「不对，你不是我妈妈！」", next: "who_is_she", sanity: -15 },
       { text: "沉默。端起那碗汤", next: "drink_end" }
     ]
   },
@@ -138,8 +146,8 @@ const STORY = {
     text: "你吼完，喘着气。鬼使神差的，你走向了镜子，你看向镜子。\n\n你发现镜子里，什么都没有。你联想到那张病历单",
     image: "img/kitchen.png",
     choices: [
-      { text: "「不可能！」冲出家门", next: "escape_door" },
-      { text: "站在原地，沉默了很久", next: "good_end" }
+      { text: "「不可能！」冲出家门", next: "escape_door", sanity: 5 },
+      { text: "站在原地，沉默了很久", next: "good_end", need_sanity: 25 }
     ]
   },
 
@@ -246,7 +254,7 @@ const STORY = {
     image: "img/kitchen.png",
     choices: [
       { text: "接过汤", next: "drink_end" },
-      { text: "打翻汤碗，举刀", next: "standoff" }
+      { text: "打翻汤碗，举刀", next: "standoff", sanity: -15 }
     ]
   },
   standoff: {
@@ -256,7 +264,7 @@ const STORY = {
     image: "img/kitchen.png",
     choices: [
       { text: "转身冲出家门", next: "escape_door" },
-      { text: "刀架自己脖子：「再过来我就——」", next: "self_threat" },
+      { text: "刀架自己脖子：「再过来我就——」", next: "self_threat", sanity: -15 },
       { text: "闭上眼，站在原地", next: "dark_end" }
     ]
   },
@@ -265,7 +273,7 @@ const STORY = {
     image: "img/kitchen.png",
     choices: [
       { text: "退到门口，开门逃走", next: "escape_door" },
-      { text: "放下刀：「妈……我是不是……死了？」", next: "who_is_she" }
+      { text: "放下刀：「妈……我是不是……死了？」", next: "who_is_she", sanity: -15 }
     ]
   },
 

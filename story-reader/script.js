@@ -3,6 +3,9 @@
 //      ④屏幕震动+闪红 ⑤结局收集（本地记录，刷新不丢）⑥静音/全屏按钮
 // 数据字段：text 正文（\n\n 分段）| image 场景图 | name 说话人 | choices 选项
 //          shake: true 震动闪红 | sfx: "scare"/"heartbeat" 音效
+// 选项字段：sanity 理智变化（负=下降，正=恢复）| need_sanity 理智门控（≤ 该值才显示）
+// 理智系统：0-100，开局 100；理智条在左上角，低理智变红；重新开始自动复位
+// 惊吓节点（shake: true）进入时理智自动 -10（闪红 = 惊吓代价）
 
 // ---------- 找到页面元素 ----------
 const sceneEl = document.getElementById('scene');        // 场景容器（震动用）
@@ -16,6 +19,8 @@ const choicesEl = document.getElementById('choices');    // 选项区
 const endingCount = document.getElementById('ending-count'); // 已解锁结局数
 const muteBtn = document.getElementById('mute-btn');     // 静音按钮
 const fsBtn = document.getElementById('fs-btn');         // 全屏按钮
+const sanityText = document.getElementById('sanity-text'); // 理智数字
+const sanityBar = document.getElementById('sanity-bar');   // 理智条
 
 // ---------- 状态 ----------
 let typeTimer = null;      // 打字定时器
@@ -23,6 +28,11 @@ let paragraphs = [];       // 当前节点的分段列表
 let paraIndex = 0;         // 当前打到第几段
 let fullText = '';         // 当前段的完整文字
 let currentNode = 'start';
+const SANITY_START = 100;  // 理智初始值
+const SANITY_MIN = 0;      // 理智下限
+const SANITY_MAX = 100;    // 理智上限
+let sanity = SANITY_START; // 当前理智
+const SHAKE_SANITY_COST = 10; // 每次惊吓（闪红）的理智代价
 
 // ============================================================
 // 一、声音系统（Web Audio 合成，不需要任何音频文件）
@@ -103,16 +113,33 @@ muteBtn.addEventListener('click', function () {
 });
 
 // ============================================================
-// 二、场景切换（淡入 + 缓慢缩放）
+// 二、场景切换（淡入 + 缓慢缩放，聚焦点轴心）
 // ============================================================
-function setScene(imagePath) {
+// focus 参数：画面聚焦点（人脸位置）——中心/上/下/左/右
+// zoomEnabled：false 表示该节点不做缩放（脸部特写场景用）
+function setScene(imagePath, focus, zoomEnabled) {
   if (!imagePath) return;
+  // 聚焦点 → 画面显示位置 + 缩放轴心
+  const map = {
+    center: ['50% 50%', 'center'],
+    top:    ['50% 25%', '50% 25%'],
+    bottom: ['50% 75%', '50% 75%'],
+    left:   ['25% 50%', '25% 50%'],
+    right:  ['75% 50%', '75% 50%']
+  };
+  const pos = map[focus] || ['50% 50%', 'center'];
+  sceneImg.style.objectPosition = pos[0];   // 决定图片的哪部分显示在画面里
+  sceneImg.style.transformOrigin = pos[1];  // 缩放时以哪个点为轴心（人脸不动）
   sceneImg.style.opacity = '0';
   sceneImg.onload = function () {
     sceneImg.style.opacity = '1';
-    sceneImg.classList.remove('zoom');   // 重新触发缩放动画
-    void sceneImg.offsetWidth;           // 强制浏览器重排（动画才会重放）
-    sceneImg.classList.add('zoom');
+    if (zoomEnabled) {
+      sceneImg.classList.remove('zoom');    // 重新触发缩放动画
+      void sceneImg.offsetWidth;
+      sceneImg.classList.add('zoom');
+    } else {
+      sceneImg.classList.remove('zoom');    // 该节点不要缩放
+    }
   };
   sceneImg.src = imagePath;
 }
@@ -171,6 +198,14 @@ function saveEnding(name) {
   }
   updateEndingCount();
 }
+
+// 理智条刷新：数字 + 进度条宽度 + 低理智变红
+function updateSanityBar() {
+  sanityText.textContent = '理智 ' + sanity;
+  sanityBar.style.width = (sanity / SANITY_MAX * 100) + '%';
+  sanityBar.classList.toggle('low', sanity <= 40);
+}
+
 function updateEndingCount() {
   const total = Object.keys(STORY).filter(n => STORY[n].choices.length === 0).length;
   endingCount.textContent = '已解锁 ' + getEndings().length + '/' + total;
@@ -180,10 +215,20 @@ function showChoices() {
   const node = STORY[currentNode];
   choicesEl.innerHTML = '';
 
-  node.choices.forEach(function (choice) {
+  // 理智门控：need_sanity 的选项在理智不达标时不显示（真结局入口）
+  const visible = node.choices.filter(function (c) {
+    return c.need_sanity === undefined || sanity <= c.need_sanity;
+  });
+  const list = visible.length > 0 ? visible : node.choices; // 保险：全被门控时退回全显示，绝不卡死玩家
+
+  list.forEach(function (choice) {
     const btn = document.createElement('button');
     btn.textContent = choice.text;
     btn.addEventListener('click', function () {
+      if (choice.sanity) {   // 选择影响理智
+        sanity = Math.max(SANITY_MIN, Math.min(SANITY_MAX, sanity + choice.sanity));
+        updateSanityBar();
+      }
       showNode(choice.next);
     });
     choicesEl.appendChild(btn);
@@ -209,8 +254,11 @@ function showNode(nodeName) {
   currentNode = nodeName;
   const node = STORY[nodeName];
 
+  if (nodeName === 'start') sanity = SANITY_START;   // 重新开始时理智复位
+  updateSanityBar();                                 // 理智条随时刷新
+
   choicesEl.innerHTML = '';            // ① 先清掉上一节点的选项（避免残留）
-  setScene(node.image);                // ② 切背景
+  setScene(node.image, node.focus, node.zoom !== false); // ② 切背景（聚焦点/是否缩放）
 
   if (node.name) {                     // ③ 说话人名字
     nameLabel.textContent = node.name;
@@ -219,13 +267,15 @@ function showNode(nodeName) {
     nameLabel.style.display = 'none';
   }
 
-  if (node.shake) {                    // ④ 惊吓时刻：震动 + 闪红
+  if (node.shake) {                    // ④ 惊吓时刻：震动 + 闪红 + 理智下降
     sceneEl.classList.remove('shake');
     void sceneEl.offsetWidth;
     sceneEl.classList.add('shake');
     flashEl.classList.remove('flash');
     void flashEl.offsetWidth;
     flashEl.classList.add('flash');
+    sanity = Math.max(SANITY_MIN, sanity - SHAKE_SANITY_COST); // 惊吓代价：理智 -10
+    updateSanityBar();
   }
   if (node.sfx) playSfx(node.sfx);     // ⑤ 音效
 
@@ -248,3 +298,5 @@ updateEndingCount();
 
 // 调试用：浏览器控制台输入 showNode('节点名') 可跳到任意节点
 window.showNode = showNode;
+window.getSanity = function () { return sanity; };  // 调试/验证用：查当前理智
+window.getNode = function () { return currentNode; }; // 调试/验证用：查当前节点

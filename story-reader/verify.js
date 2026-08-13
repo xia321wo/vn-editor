@@ -33,6 +33,10 @@ for (const [name, node] of Object.entries(STORY)) {
   if (!node.image) { fail(`${name}: 缺少 image 字段`); continue; }
   if (!fs.existsSync(path.join(dir, node.image))) fail(`${name}: 图片文件不存在 ${node.image}`);
   if (node.sfx && !['scare', 'heartbeat'].includes(node.sfx)) fail(`${name}: 未知音效类型 '${node.sfx}'`);
+  for (const c of (node.choices || [])) {
+    if (c.sanity !== undefined && typeof c.sanity !== 'number') fail(`${name}: sanity 必须是数字`);
+    if (c.need_sanity !== undefined && typeof c.need_sanity !== 'number') fail(`${name}: need_sanity 必须是数字`);
+  }
   if (node.shake !== undefined && typeof node.shake !== 'boolean') fail(`${name}: shake 必须是 true/false`);
 }
 const seen = new Set(['start']); const queue = ['start'];
@@ -55,7 +59,8 @@ function makeEl(id) {
     id, textContent: '', src: '', className: '',
     style: { display: 'none', opacity: '0' },
     classList: { _s: new Set(),
-      add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, contains(c) { return this._s.has(c); } },
+      add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, contains(c) { return this._s.has(c); },
+      toggle(c, force) { if (force === undefined) { this._s.has(c) ? this._s.delete(c) : this._s.add(c); } else { force ? this._s.add(c) : this._s.delete(c); } } },
     children: [], listeners: {},
     addEventListener(ev, fn) { this.listeners[ev] = fn; },
     appendChild(c) { this.children.push(c); },
@@ -76,7 +81,9 @@ const elements = {
   'choices': makeEl('choices'),
   'ending-count': makeEl('ending-count'),
   'mute-btn': makeEl('mute-btn'),
-  'fs-btn': makeEl('fs-btn')
+  'fs-btn': makeEl('fs-btn'),
+  'sanity-text': makeEl('sanity-text'),
+  'sanity-bar': makeEl('sanity-bar')
 };
 const document = { getElementById: (id) => elements[id], createElement: () => makeEl('button') };
 // 模拟 localStorage；不提供 AudioContext → 音效自动跳过（不崩溃）
@@ -111,9 +118,26 @@ if (choicesEl.children.length !== STORY.start.choices.length) fail('选项数量
 console.log('  段落推进 → 选项出现: ', choicesEl.innerHTML);
 
 // 深度优先遍历所有分支
-const visited = new Set();
+const visited = new Set();        // 已完成遍历的节点
+const gatedPending = new Map();   // 节点名 -> 曾被理智门控隐藏、待低理智时复查的选项
 function walk(nodeName, pathArr) {
-  if (visited.has(nodeName)) return;
+  if (visited.has(nodeName)) {
+    // 已遍历过：检查之前被门控隐藏的选项，理智更低后是否已可见（真结局入口复查）
+    const pending = gatedPending.get(nodeName);
+    if (pending) {
+      for (const choice of pending) {
+        windowMock.showNode(nodeName); skipToChoices();
+        const idx = choicesEl.children.findIndex(b => b.textContent === choice.text);
+        if (idx !== -1) {
+          gatedPending.delete(nodeName);
+          console.log(`    (门控复查: 理智降至 ${windowMock.getSanity()}，选项「${choice.text}」出现)`);
+          choicesEl.children[idx].click(); skipToChoices();
+          walk(choice.next, [...pathArr, choice.next]);
+        }
+      }
+    }
+    return;
+  }
   visited.add(nodeName);
   const node = STORY[nodeName];
   if (node.choices.length === 0) {
@@ -126,7 +150,16 @@ function walk(nodeName, pathArr) {
     // 震动节点检查：显示后 scene 应有 shake class
     if (node.shake && !sceneEl.classList.contains('shake')) fail(`${nodeName}: 标记了 shake 但未触发震动`);
     const idx = choicesEl.children.findIndex(b => b.textContent === choice.text);
-    if (idx === -1) { fail(`${nodeName}: 找不到选项「${choice.text}」`); continue; }
+    if (idx === -1) {
+      // 理智门控：need_sanity 选项在理智不达标时隐藏，属于预期行为
+      if (choice.need_sanity !== undefined && windowMock.getSanity() > choice.need_sanity) {
+        console.log(`    (门控隐藏待复查: 「${choice.text}」需理智≤${choice.need_sanity}，当前 ${windowMock.getSanity()})`);
+        if (!gatedPending.has(nodeName)) gatedPending.set(nodeName, []);
+        gatedPending.get(nodeName).push(choice);
+        continue;
+      }
+      fail(`${nodeName}: 找不到选项「${choice.text}」`); continue;
+    }
     choicesEl.children[idx].click();
     skipToChoices();
     const nextName = choice.next; // 目标节点由选项数据直接给出
@@ -166,6 +199,7 @@ windowMock.showNode('start'); skipToChoices();
   skipToChoices();
   const startLast = STORY.start.text.split(/\n\n+/).pop(); // 段落式：文本框只显示最后一段
   if (textEl.textContent !== startLast || bgimg.src !== STORY.start.image) fail('重新开始未回到 start');
+  if (windowMock.getSanity() !== 100) fail(`重新开始后理智未复位: ${windowMock.getSanity()}`);
   console.log('  重新开始 → 回到 start，背景图:', bgimg.src, '✓');
 }
 
@@ -183,6 +217,37 @@ windowMock.showNode('start'); skipToChoices();
 if (nameLabel.style.display !== 'inline-block' || nameLabel.textContent !== '测试') fail('有 name 字段时标签未显示');
 delete STORY.start.name;
 console.log('  名字标签：无 name 隐藏 / 有 name 显示 ✓');
+
+// ---------- ⑤ 理智系统专项（真结局门控） ----------
+console.log('=== ⑤ 理智系统专项（真结局门控）===');
+function nav(route) { // 沿给定路线逐选项真实点击（与真实游玩一致：每个节点只触发一次惊吓扣理智）
+  windowMock.showNode(route[0]); skipToChoices();
+  let cur = route[0];
+  for (const target of route.slice(1)) {
+    const choice = STORY[cur].choices.find(c => c.next === target);
+    if (!choice) { fail(`${cur}: 无通向 ${target} 的选项`); return; }
+    const idx = choicesEl.children.findIndex(b => b.textContent === choice.text);
+    if (idx === -1) { fail(`${cur}: 找不到选项「${choice.text}」`); return; }
+    choicesEl.children[idx].click(); skipToChoices();
+    cur = target;
+  }
+}
+// 常规真相线：选择 -60 + 惊吓 -10 = 30（> 25），真结局入口被隐藏
+nav(['start','frontdoor','kitchen','kitchen2','green_onion','confront','truth','who_is_she']);
+console.log(`  常规真相线抵达 who_is_she，理智 = ${windowMock.getSanity()}`);
+if (windowMock.getSanity() !== 30) fail(`常规线理智应为 30（含惊吓-10），实际 ${windowMock.getSanity()}`);
+if (choicesEl.children.some(b => /站在原地/.test(b.textContent))) fail('理智 40 > 35，真结局选项不应出现');
+console.log('  ✓ 理智 30 > 25：真结局选项被门控隐藏');
+// 崩溃线：选择 -65 + 惊吓 -20 = 15（≤ 25），真结局入口出现
+nav(['start','frontdoor','bedroom','peek','knife_1','apple','standoff','self_threat','who_is_she']);
+console.log(`  崩溃线抵达 who_is_she，理智 = ${windowMock.getSanity()}`);
+if (windowMock.getSanity() !== 15) fail(`崩溃线理智应为 15（含惊吓-20），实际 ${windowMock.getSanity()}`);
+const goodBtn = choicesEl.children.find(b => /站在原地/.test(b.textContent));
+if (!goodBtn) fail('理智 35 ≤ 35，真结局选项应出现');
+console.log('  ✓ 理智 15 ≤ 25：真结局选项出现');
+goodBtn.click(); skipToChoices();
+if (windowMock.getNode() !== 'good_end') fail(`点击后未进入 good_end（当前 ${windowMock.getNode()}）`);
+console.log('  ✓ 点击后进入真结局 good_end');
 
 if (failed) { console.log('\n✗✗ 验证未通过，先修复再提交！'); process.exit(1); }
 console.log('\n✓✓ 全部验证通过：可以放心提交');
